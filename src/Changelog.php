@@ -264,81 +264,9 @@ class Changelog
         }
 
         foreach ($options as $params) {
-            $commitsRaw = Repository::getCommits($params['options']);
-            usort($commitsRaw, function ($x, $y) use ($sortBy, $sortOrientation) {
-                if (property_exists($x, $sortBy)) {
-                    if ($sortOrientation === 'ASC') {
-                        return $x->{$sortBy} <=> $y->{$sortBy};
-                    }
+            $commits = $this->getCommits($params['options'], $sortBy, $sortOrientation);
 
-                    return $y->{$sortBy} <=> $x->{$sortBy};
-                }
-
-                return 0;
-            });
-
-            // Get all commits information
-            $commits = [];
-            foreach ($commitsRaw as $commitRaw) {
-                $commit = ConventionalCommit::fromCommit($commitRaw);
-
-                // Not a conventional commit
-                if (!$commit->isValid()) {
-                    continue;
-                }
-
-                // Check ignored commit
-                $ignore = false;
-                foreach ($this->config->getIgnorePatterns() as $pattern) {
-                    if (preg_match($pattern, $commit->getHeader())) {
-                        $ignore = true;
-                        break;
-                    }
-                }
-                // Add commit
-                if (!$ignore) {
-                    $commits[] = $commit;
-                }
-            }
-
-            // Changes groups sorting
-            $changes = [];
-            foreach ($this->config->getTypes() as $type) {
-                $changes[$type] = [];
-            }
-
-            // Group all changes to lists by type
-            $types = $this->config->getAllowedTypes();
-            foreach ($commits as $commit) {
-                if (in_array($commit->getType(), $types) || $commit->isBreakingChange()) {
-                    $itemKey = $this->getItemKey($commit->getDescription());
-                    $breakingChanges = $commit->getBreakingChanges();
-                    $type = (string)$commit->getType();
-                    $scope = $commit->getScope();
-                    if ($this->config->isPrettyScope()) {
-                        $scope = $commit->getScope()->toPrettyString();
-                    }
-                    $hash = $commit->getHash();
-                    foreach ($breakingChanges as $description) {
-                        $breakingType = Configuration::BREAKING_CHANGES_TYPE;
-                        $key = $this->getItemKey($description);
-                        if (empty($description) || $itemKey === $key) {
-                            $commit->setBreakingChange(true);
-                            continue;
-                        }
-                        // Clone commit as breaking with different description message
-                        $breakingCommit = new ConventionalCommit();
-                        $breakingCommit->setType($breakingType)
-                                       ->setDescription($description)
-                                       ->setScope($scope)
-                                       ->setHash($hash);
-                        $changes[$breakingType][$scope][$key][$hash] = $breakingCommit;
-                        $summary[$breakingType]++;
-                    }
-                    $changes[$type][$scope][$itemKey][$hash] = $commit;
-                    $summary[$type]++;
-                }
-            }
+            list($changes, $summary) = $this->getChangesAndSummary($commits, $summary);
 
             if ($params['autoBump']) {
                 $semver = new SemanticVersion($params['from']);
@@ -473,7 +401,7 @@ class Changelog
      *
      * @param ConventionalCommit[][][][]  $changes
      */
-    protected function getMarkdownChanges(array $changes): string
+    public function getMarkdownChanges(array $changes): string
     {
         $changelog = '';
         // Add all changes list to new changelog
@@ -663,5 +591,115 @@ class Changelog
         $format = $this->config->getReleaseCommitMessageFormat();
 
         return $this->getCompiledString($format, ['currentTag' => $tag]);
+    }
+
+    public function getNewChangelog(): string
+    {
+        $sortBy = $this->config->getSortBy();
+        $sortOrientation = $this->config->getSortOrientation($sortBy);
+        $lastVersion = Repository::getLastTag(); // Last version
+        $commits = $this->getCommits("{$lastVersion}..HEAD", $sortBy, $sortOrientation);
+        $summary = [];
+        foreach ($this->config->getTypes() as $type) {
+            $summary[$type] = 0;
+        }
+        list($changes, $summary) = $this->getChangesAndSummary($commits, $summary);
+
+        return $this->getMarkdownChanges($changes);
+    }
+
+    /**
+     * @param array $commits
+     * @param array $summary
+     * @return array
+     */
+    protected function getChangesAndSummary(array $commits, array $summary = []): array
+    {
+        // Changes groups sorting
+        $changes = [];
+        foreach ($this->config->getTypes() as $type) {
+            $changes[$type] = [];
+        }
+
+        // Group all changes to lists by type
+        $types = $this->config->getAllowedTypes();
+        foreach ($commits as $commit) {
+            if (in_array($commit->getType(), $types) || $commit->isBreakingChange()) {
+                $itemKey = $this->getItemKey($commit->getDescription());
+                $breakingChanges = $commit->getBreakingChanges();
+                $type = (string)$commit->getType();
+                $scope = $commit->getScope();
+                if ($this->config->isPrettyScope()) {
+                    $scope = $commit->getScope()->toPrettyString();
+                }
+                $hash = $commit->getHash();
+                foreach ($breakingChanges as $description) {
+                    $breakingType = Configuration::BREAKING_CHANGES_TYPE;
+                    $key = $this->getItemKey($description);
+                    if (empty($description) || $itemKey === $key) {
+                        $commit->setBreakingChange(true);
+                        continue;
+                    }
+                    // Clone commit as breaking with different description message
+                    $breakingCommit = new ConventionalCommit();
+                    $breakingCommit->setType($breakingType)
+                        ->setDescription($description)
+                        ->setScope($scope)
+                        ->setHash($hash);
+                    $changes[$breakingType][$scope][$key][$hash] = $breakingCommit;
+                    $summary[$breakingType]++;
+                }
+                $changes[$type][$scope][$itemKey][$hash] = $commit;
+                $summary[$type]++;
+            }
+        }
+        return array($changes, $summary);
+    }
+
+    /**
+     * @param string $options
+     * @param string $sortBy
+     * @param string $sortOrientation
+     * @return array
+     */
+    protected function getCommits(string $options, string $sortBy, string $sortOrientation): array
+    {
+        $commitsRaw = Repository::getCommits($options);
+        usort($commitsRaw, function ($x, $y) use ($sortBy, $sortOrientation) {
+            if (property_exists($x, $sortBy)) {
+                if ($sortOrientation === 'ASC') {
+                    return $x->{$sortBy} <=> $y->{$sortBy};
+                }
+
+                return $y->{$sortBy} <=> $x->{$sortBy};
+            }
+
+            return 0;
+        });
+
+        // Get all commits information
+        $commits = [];
+        foreach ($commitsRaw as $commitRaw) {
+            $commit = ConventionalCommit::fromCommit($commitRaw);
+
+            // Not a conventional commit
+            if (!$commit->isValid()) {
+                continue;
+            }
+
+            // Check ignored commit
+            $ignore = false;
+            foreach ($this->config->getIgnorePatterns() as $pattern) {
+                if (preg_match($pattern, $commit->getHeader())) {
+                    $ignore = true;
+                    break;
+                }
+            }
+            // Add commit
+            if (!$ignore) {
+                $commits[] = $commit;
+            }
+        }
+        return $commits;
     }
 }

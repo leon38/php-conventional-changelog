@@ -810,12 +810,12 @@ class Configuration
     /**
      * @param mixed $hook
      */
-    public function runHook($hook)
+    public function runHook($hook, $args)
     {
         if (is_string($hook)) {
             system($hook);
         } elseif (is_callable($hook)) {
-            call_user_func($hook);
+            call_user_func($hook, $args);
         }
     }
 
@@ -852,7 +852,9 @@ class Configuration
 
     public function postRun()
     {
-        $this->runHook($this->postRun);
+        $changelog = new Changelog($this);
+        $newChangelog = $changelog->getNewChangelog();
+        $this->runHook($this->postRun, [$newChangelog]);
     }
 
     /**
