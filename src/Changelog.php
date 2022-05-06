@@ -354,20 +354,20 @@ class Changelog
                     } else {
                         $output->error('An error occurred tagging the release!');
 
-                        return 1; //Command::FAILURE;
+                        return 1; // Command::FAILURE;
                     }
                 }
             } else {
                 $output->error('An error occurred committing the release!');
 
-                return 1; //Command::FAILURE;
+                return 1; // Command::FAILURE;
             }
         }
 
         // Hook post run
         $this->config->postRun();
 
-        return 0; //Command::SUCCESS;
+        return 0; // Command::SUCCESS;
     }
 
     /**
@@ -608,11 +608,6 @@ class Changelog
         return $this->getMarkdownChanges($changes);
     }
 
-    /**
-     * @param array $commits
-     * @param array $summary
-     * @return array
-     */
     protected function getChangesAndSummary(array $commits, array $summary = []): array
     {
         // Changes groups sorting
@@ -653,15 +648,10 @@ class Changelog
                 $summary[$type]++;
             }
         }
-        return array($changes, $summary);
+
+        return [$changes, $summary];
     }
 
-    /**
-     * @param string $options
-     * @param string $sortBy
-     * @param string $sortOrientation
-     * @return array
-     */
     protected function getCommits(string $options, string $sortBy, string $sortOrientation): array
     {
         $commitsRaw = Repository::getCommits($options);
@@ -700,6 +690,7 @@ class Changelog
                 $commits[] = $commit;
             }
         }
+
         return $commits;
     }
 }

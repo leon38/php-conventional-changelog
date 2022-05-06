@@ -43,6 +43,5 @@ return $config
             'sort_algorithm' => 'alpha',
             'imports_order' => ['class', 'const', 'function'],
         ],
-        'PHP_CS_FIXER_IGNORE_ENV' => true
     ])
     ->setFinder($finder);
